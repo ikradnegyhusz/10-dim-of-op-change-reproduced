@@ -29,6 +29,7 @@ sys.modules["pandas.core.indexes.numeric"] = dummy_numeric
 
 class LegacyPandasUnpickler(pickle.Unpickler):
     """Fallback class remapper for legacy Pandas pickles."""
+
     def find_class(self, module, name):
         if module == "pandas.core.indexes.numeric":
             return pd.Index
@@ -66,7 +67,6 @@ def load_data_safe(path: str) -> pd.DataFrame:
 
     df["has_delta"] = df["has_delta"].astype(np.int8)
 
-    # Columns needed for Table 2
     required_cols = [
         "has_delta",
         "sentiment_pos_weighted_comment_z",
@@ -88,8 +88,11 @@ def load_data_safe(path: str) -> pd.DataFrame:
         "identity_weighted_comment_z",
     ]
 
-    existing_cols = [c for c in required_cols if c in df.columns]
-    df = df[existing_cols].copy()
+    missing_cols = [c for c in required_cols if c not in df.columns]
+    if missing_cols:
+        raise ValueError(f"Required dataset columns are missing: {missing_cols}")
+
+    df = df[required_cols].copy()
     gc.collect()
 
     # Downcast float columns to float32 to reduce memory footprint
@@ -108,20 +111,21 @@ def nice_columns(c: str) -> str:
         .replace("poster", "Post")
         .replace("republican", "right-wing")
         .replace("democrat", "left-wing")
+        .replace("leftwing", "left-wing")
+        .replace("rightwing", "right-wing")
         .replace("pos", "pos.")
         .replace("neg", "neg.")
         .replace("pos.t", "post")
-        .replace("leftwing", "Left-Wing")
-        .replace("rightwing", "Right-Wing")
+        .replace("[T.True]", "")
+        .replace("T.True", "")
+        .replace("_", " ")
         .title()
         .replace("Diff ", "Diff. ")
         .replace("Op And Commenter Opinionated", "Both polarized")
         .replace("Op And Commenter Diff Opinion", "Both polarized Diff. side")
         .replace("Both Polarized:Diffside", "Both Polarized Diff. Side")
-        .replace("Both_Polarized:Diffside", "Both Polarized Diff. Side")
         .replace("Diffside", "Diff. Side")
         .replace("Shared Sub", "Shared Group")
-        .replace("T.True", "")
     )
 
 
@@ -167,16 +171,15 @@ def run_table2_regressions(df: pd.DataFrame, dims: list) -> pd.DataFrame:
     sentiments = "sentiment_pos_weighted_comment_z + sentiment_neg_weighted_comment_z"
     social_dims_formula = " + ".join([f"{c}_weighted_comment_z" for c in dims])
 
-    # In patsy formula, interaction is defined with a colon `:`
     model_specs = [
-        (sentiments, False),  # A
-        (f"{sentiments} + post_leftwing + post_rightwing + comment_leftwing + comment_rightwing", False),  # B
-        (f"{sentiments} + shared_sub", False),  # C
-        (f"{sentiments} + both_polarized + diffside + both_polarized:diffside", False),  # D
-        (sentiments, True),   # E
-        (f"{sentiments} + post_leftwing + post_rightwing + comment_leftwing + comment_rightwing", True),   # F
-        (f"{sentiments} + shared_sub", True),   # G
-        (f"{sentiments} + both_polarized + diffside + both_polarized:diffside", True),   # H
+        (sentiments, False),
+        (f"{sentiments} + post_leftwing + post_rightwing + comment_leftwing + comment_rightwing", False),
+        (f"{sentiments} + shared_sub", False),
+        (f"{sentiments} + both_polarized + diffside + both_polarized:diffside", False),
+        (sentiments, True),
+        (f"{sentiments} + post_leftwing + post_rightwing + comment_leftwing + comment_rightwing", True),
+        (f"{sentiments} + shared_sub", True),
+        (f"{sentiments} + both_polarized + diffside + both_polarized:diffside", True),
     ]
 
     results_df = None
@@ -188,11 +191,12 @@ def run_table2_regressions(df: pd.DataFrame, dims: list) -> pd.DataFrame:
             formula_parts.append(confounders)
 
         formula = "has_delta ~ " + " + ".join(formula_parts)
-        print(f"Fitting Model {chr(ord('A') + idx)}...")
+        print(f"Fitting model {idx + 1}/8...")
         model = smf.logit(formula=formula, data=df).fit(disp=False)
         results_df = add_results_to_table(model, results_df)
 
-    results_table = results_df.copy()
+    # Sort models by Adj. Pseudo-R2 ascending to match Table 2 columns A-H
+    results_table = results_df.sort_values(by="Adj. Pseudo-R2").copy()
     results_table.columns = [nice_columns(c) for c in results_table.columns]
     results_table = results_table.transpose()
     results_table.columns = [chr(ord("A") + i) for i in range(len(results_table.columns))]
@@ -246,7 +250,6 @@ def main():
     if not os.path.exists(args.data_path):
         sys.exit(f"Error: Data file not found at {args.data_path}")
 
-    # Load dataset safely
     df = load_data_safe(args.data_path)
 
     # 8 Dimensions used (excluding 'Fun')
