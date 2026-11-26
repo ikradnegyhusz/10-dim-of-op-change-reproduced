@@ -27,10 +27,9 @@ ratios) to within 0.032 and **Table 2** (eight logistic regression models) exact
 cell for cell. **Figure 1b** (post-level odds ratios) required a correction of the
 unit of analysis: the notebook counts comments, while the figure counts posts.
 With that correction all ten values are within 0.029. **Figure 1c** (the post ×
-comment interaction matrix) is only **partially** reproduced: 9 of its 14 values
-are within 0.05 and 6 are significant at the paper's threshold, but the four
-negative "Support" cells could not be reproduced and were abandoned after a
-systematic search over 18 variants of the statistic and its null. The report
+comment interaction matrix) is **largely** reproduced: 12 of its 14 values are
+within 0.05 and 7 are significant at the paper's threshold; only Fun × Fun
+(about half its published size) and Status × Knowledge fall outside. The report
 documents what the original code can and cannot do, the exact fixes applied, the
 experiments performed, and practical advice for future reproducers.
 
@@ -101,7 +100,7 @@ We formulate the paper's contributions as falsifiable claims:
   matters. Matching intents are associated with a higher probability of a delta
   (e.g. power × power +22%, identity × identity +21%, fun × fun +21%, conflict ×
   conflict +13%, support × support +10%), while some mismatches are negative
-  (power × status −14%, power × fun −13%, conflict × identity −12%, and support
+  (power × status −14%, power × fun −13%, conflict × identity −12%, and knowledge
   responses to power/similarity/fun/status).
 * **Claim 4 (robustness).** The association between social dimensions and delta
   survives controls for positive/negative sentiment and for the political sides
@@ -133,60 +132,74 @@ from-description reimplementation.
 
 ### 3.1 Approach: two phases
 
-We deliberately worked in two phases.
+As a pragmatic starting point, we decided to part from the authors' own code and
+data rather than reimplementing the method from the paper. Their repository
+contains the two notebooks behind Figure 1 and Table 2, and the processed
+dataset is published alongside it, so we could test the actual artifacts. Apart
+from the paper, these were the only resources we used, so no step honestly
+needed a GPU.
 
-1. **Literal port (`reproduce/from_original/`).** We copied the notebook cells
-   into two Python scripts with only compatibility fixes and dead-code removal.
-   The goal was to measure what the repository actually produces, including its
-   bugs. This phase is the baseline: it shows which paper results the published
-   artifacts can and cannot support.
-2. **Modified reproduction (`reproduce/modified/`).** Starting from the literal
-   scripts, we applied the minimum methodological changes needed to approach the
-   published results, and verified each change against the paper. Every change
-   and every failed experiment is recorded in `reproduce/modified/JOURNAL.md`.
+We then split the work into two phases.
 
-This separation matters for a reproducibility report: without it, one cannot tell
-whether a mismatch comes from the paper, the code, the data, or the reproducer's
-own choices.
+1. **Literal port (`reproduce/from_original/`).** We first copied the notebook
+   cells into two Python scripts, changing only what was needed to make them run
+   (see `reproduce/from_original/JOURNAL.md`) to be able to see what the
+   repository really produced, bugs included, as our "baseline".
+2. **Modified reproduction (`reproduce/modified/`).** Starting from those
+   scripts, we made the smallest methodological changes that brought the output
+   closer to the paper, and checked each one against the paper before keeping
+   it. We recorded every change and every experiment that failed in
+   `reproduce/modified/JOURNAL.md`.
+
+To be able to tell whether a difference came from the paper, the code, the data
+or our own choices, we kept the two phases separate. This way, every mismatch
+can be traced to its source.
 
 ### 3.2 Models and algorithms
 
-* **Social-dimension extraction (external, not retrained).** The paper uses the
-  Ten Dimensions model: an LSTM over 300-dimensional GloVe (Common Crawl)
-  embeddings, with one independently trained binary classifier per dimension,
-  trained on about 9,000 crowdsourced sentences; average AUC ≈ 0.84. The model
-  returns the maximum sentence score per message. The released dataset already
-  contains the binarised and length-discounted scores, so we did not retrain or
-  re-run it.
-* **Sociopolitical post classifier (external, not retrained).** An L1-regularised
-  logistic regression on {1,2,3}-grams with the 10,000 most frequent features;
-  reported F1 ≈ 89.5% on a held-out test set and ≈ 82% on a manually labelled
-  r/ChangeMyView validation set. Its output defines the released dataset; we did
-  not retrain it.
-* **Comment and post odds ratios (Figure 1a/1b).** Non-parametric estimators from
-  the paper's Eq. 5: `OR = [p_d/(1−p_d)] / [p_nd/(1−p_nd)]`, where `p_d` and
-  `p_nd` are the mean length-discounted dimension scores in the delta and
-  no-delta sets. The 95% confidence interval uses the count-based standard error
-  of Eq. 9, `1.96·sqrt(1/n₁₁ + 1/n₁₂ + 1/n₂₁ + 1/n₂₂)` on the log-odds scale.
-* **Post × comment interaction (Figure 1c).** For every post dimension `j` and
-  comment dimension `i`, the conditional probability
-  `p(d_i(comment) | d_j(post))` is computed with length-discounted comment
-  weights (Eq. 6–7). Its odds are divided by the odds of a shuffled null model in
-  which each comment is randomly assigned a post (Eq. 8), and the resulting
-  quantity for delta comments is compared with the same quantity for no-delta
-  comments. The difference is the value shown in the matrix.
-* **Logistic regressions (Table 2).** `statsmodels` Logit, fitted by maximum
-  likelihood (Newton–Raphson), with 3–15 coefficients per model and no
-  regularisation. Adjusted McFadden pseudo-R² is
+The pipeline starts with two trained models. We did not retrain or re-run
+either of them, because their outputs are already columns in the released
+dataset.
+
+* **Ten Dimensions classifier.** The social dimensions come from the model of
+  Choi et al. (2020). Each dimension has its own binary classifier, an LSTM over
+  300-dimensional GloVe embeddings learned from Common Crawl. The classifiers
+  were trained on about 9,000 sentences labelled by crowd workers and reach an
+  average AUC of 0.84. A message receives the highest score of any of its
+  sentences.
+* **Sociopolitical post classifier.** An L1-regularised logistic regression on
+  {1,2,3}-grams that keeps the 10,000 most frequent features. The authors
+  report an F1 of 89.5% on a held-out test set and 82% on a hand-labelled
+  validation set of r/ChangeMyView posts. Its predictions decided which posts
+  are in the released dataset.
+
+What we ran ourselves is standard statistics on those columns.
+
+* **Odds ratios for comments and posts (Figure 1a/1b).** For each dimension,
+  the code compares the mean length-discounted score in the delta set (`p_d`)
+  with the mean in the no-delta set (`p_nd`) through the odds ratio of Eq. 5,
+  `OR = [p_d/(1−p_d)] / [p_nd/(1−p_nd)]`. The 95% confidence interval is built
+  on the log-odds scale from the four cell counts (Eq. 9):
+  `1.96·sqrt(1/n₁₁ + 1/n₁₂ + 1/n₂₁ + 1/n₂₂)`.
+* **Post × comment interactions (Figure 1c).** For each post dimension `j` and
+  comment dimension `i`, the code estimates how likely a comment is to express
+  `i` when its post expresses `j`, using the length-discounted comment scores
+  (Eq. 6–7). It turns these probabilities into odds and divides them by the
+  odds under a null model in which every comment is attached to a random post
+  (Eq. 8). Each cell of the matrix is this ratio for delta comments minus the
+  same ratio for no-delta comments.
+* **Logistic regressions (Table 2).** Ordinary `statsmodels` Logit models with
+  3 to 15 coefficients each, fitted by maximum likelihood (Newton–Raphson)
+  without regularisation. Fit is reported as McFadden's adjusted pseudo-R²,
   `1 − (llf − K)/llnull`, where `K` is the number of parameters.
 
 ### 3.3 Dataset
 
-The released file is a single pandas pickle,
-`changemyview-sociopol-processed.pickle.gz` (149 MB compressed, about 2.7 GB in
-memory), with **3,678,849 comment rows × 88 columns** and **45,342 unique
-posts**. Each row is one comment, with its own text features and the features of
-the post it belongs to. The delta rate is 1.04% (38,223 comments). Key columns:
+Everything runs on a single file, `changemyview-sociopol-processed.pickle.gz`.
+Each of its 3,678,849 rows is one comment, with 88 columns covering both the
+comment's own features and those of the post it belongs to. The comments come
+from 45,342 posts, and 1.04% of them (38,223) received a delta. The columns we
+relied on most are:
 
 | Group | Examples | Meaning |
 | --- | --- | --- |
@@ -198,7 +211,8 @@ the post it belongs to. The delta rate is 1.04% (38,223 comments). Key columns:
 | Sentiment | `sentiment_pos_weighted_comment_z`, `sentiment_neg_…` | VADER positive/negative scores |
 | Confounders | `post_leftwing`, `comment_rightwing`, `both_polarized`, `diff_side`, `shared_sub` | political-side variables of Table 3 |
 
-Comparison with the paper:
+The released data is a slightly different snapshot from the one in the paper,
+with about 12,000 fewer comments and 700 fewer posts:
 
 | Quantity | Paper | Released data |
 | --- | --- | --- |
@@ -209,84 +223,86 @@ Comparison with the paper:
 | Comments with delta | 38,165 | 38,223 (38,217 after excluding OP comments) |
 | Delta rate | ≈ 1.03% | 1.04% |
 
-There is **no train/dev/test split** for the reproduction: the analysis is
-observational and runs on the full released table. The only split-like
-operations are the delta / no-delta partitions. All preprocessing (binarisation
-at the 85th percentile of each dimension score, length discounting, z-scoring,
-sentiment, political-side variables) was performed by the authors and is already
-in the released columns; we did not redo it. The data can be downloaded from the
-release page:
+There is no train/dev/test split, as the analysis is purely observational. It
+measures associations on the full table instead of training a model to predict
+new data, so the only partition is into delta and no-delta comments or posts.
+All preprocessing was done by the authors and is already in the released
+columns: binarising each dimension score at its 85th percentile, length
+discounting, z-scoring, sentiment and the political-side variables. The data can
+be downloaded from the release page:
 <https://github.com/corradomonti/10-dim-of-op-change/releases/tag/changemyview-sociopol-processed>.
 
-**Important data quirk.** The column named `comment_id` is **not** a unique
-comment identifier: it is the *parent* id. Direct replies to a post carry
-`t3_<post_id>` (650,101 rows), and nested replies carry `t1_<parent_comment_id>`
-(3,028,748 rows); there are only 2,331,456 distinct values for 3,678,849 rows.
-This matters for Figure 1b (see Results).
+One column is easy to misread. Despite its name, `comment_id` does not identify
+a comment; it holds the id of the comment's *parent*. Direct replies to a post
+carry `t3_<post_id>` (650,101 rows) and nested replies carry
+`t1_<parent_comment_id>` (3,028,748 rows), so the column has only 2,331,456
+distinct values for 3,678,849 rows. This matters for Figure 1b (see Results).
 
 ### 3.4 Hyperparameters
 
-The analysis has almost no free hyperparameters; the important settings are the
-statistical cut-offs and the choices we had to make where the paper/code were
-silent.
+There is very little to tune. The settings that matter are the statistical
+cut-offs, plus a couple of choices we made ourselves where the paper and the
+code were silent or disagreed.
 
 | Setting | Value | Where it comes from |
 | --- | --- | --- |
 | Dimension binarisation threshold | 85th percentile per dimension | Authors; already applied in the released columns |
-| Length discount | `1/(1+z)` for `z ≥ 0`, `2 − 1/(1−z)` for `z < 0`, with `z` the standardised log-length | Paper Eq. 2 and authors' code |
+| Length discount | `1/(1+z)` for `z ≥ 0`, `2 − 1/(1−z)` for `z < 0`, with `z` the standardised log-length | Paper Eq. 2 and authors' code (see the note below) |
 | Dimension selection (Table 2) | keep dimensions with `p < 0.01` after Benjamini–Yekutieli correction | Authors' notebook |
 | Significance stars (Table 2) | Benjamini–Hochberg, thresholds 0.05 / 0.01 / 0.001 | Authors' notebook |
-| Regression fitting | MLE, Newton, `maxiter=100` | `statsmodels` defaults / notebook |
+| Regression fitting | MLE, Newton–Raphson, `maxiter=35` | `statsmodels` default; the notebook does not change it |
 | Figure 1c null | 300 permutations, seed 2024 | **Our choice**; the notebook had one unseeded draw |
 | Figure 1c significance | one-sided p ≤ 0.01 | Authors' notebook |
 | Figure 1a/1b | no hyperparameters | — |
 
-No hyperparameter search was performed: the models are either fixed by the
-paper or fitted by maximum likelihood. The only "search" in this study is the
-systematic exploration of Figure 1c definitions described in Results.
+We did not search over hyperparameters, since every model is either fixed by
+the paper or fitted by maximum likelihood. The closest thing to a search is our
+exploration of alternative Figure 1c definitions, described in the Results.
 
-**Note on Eq. 2.** The transcribed equation shows `1 + z` for `z ≥ 0`, but the
-released code uses `1/(1+z)`, which is also what the prose describes (the value
-goes to 0 for long messages and to 2 for short ones). We follow the code; the
-transcribed form would exceed 1 for long messages and is inconsistent with the
-text.
+**Note on Eq. 2.** The paper standardises message length in words, but for the
+No dim score the authors' code standardises the logarithm of the word count
+(`log_number_of_words`) instead. We follow the code. The other nine dimensions
+come already discounted in the released data, so we cannot check which version
+the authors used for them.
 
 ### 3.5 Experimental setup and code
 
-All experiments are CPU-only Python scripts. The environment used was:
+All experiments are Python scripts that run on a CPU. We used Python 3.12.10
+with pandas 3.1.0, NumPy 2.5.4, statsmodels 0.15.0, matplotlib 3.11.2 and SciPy
+1.18.1, plus Jinja2, which pandas needs to write Table 2 as LaTeX. We also used
+scikit-learn 1.9.1, but only for exploratory logistic regressions. Everything
+ran on a Windows PC with an AMD Ryzen 5 5500U (6 cores, 12 threads), 15.4 GB of
+RAM and no GPU.
 
-* Python 3.12.10, pandas 3.1.0, NumPy 2.5.4, statsmodels 0.15.0,
-  matplotlib 3.11.2, SciPy 1.18.1, scikit-learn 1.9.1 (only for exploratory
-  logistic regressions);
-* Windows; AMD Ryzen 5 5500U (6 cores / 12 threads), 15.4 GB RAM, no GPU.
-
-The two final scripts are:
-
-```bash
-env/Scripts/python.exe reproduce/modified/reproduce_figure1.py
-env/Scripts/python.exe reproduce/modified/reproduce_table2.py
-```
-
-The literal baselines are:
+The code is at <https://github.com/ikradnegyhusz/10-dim-of-op-change-reproduced>.
+To rerun it, download the dataset into `data/` and run the two final scripts
+from the repository root, with the environment active:
 
 ```bash
-env/Scripts/python.exe reproduce/from_original/reproduce_figure1.py
-env/Scripts/python.exe reproduce/from_original/reproduce_table2.py
+python reproduce/modified/reproduce_figure1.py
+python reproduce/modified/reproduce_table2.py
 ```
 
-The evaluation measures are the paper's own: odds ratios, 95% confidence
-intervals, Benjamini–Hochberg-adjusted p-values, and adjusted pseudo-R². To
-compare a reproduction with the paper we report the absolute difference per value
-and count how many values are within 0.05 (and, for Figure 1c, whether the sign
-matches and whether the cell is significant at p < 0.01).
+The literal baselines run the same way:
+
+```bash
+python reproduce/from_original/reproduce_figure1.py
+python reproduce/from_original/reproduce_table2.py
+```
+
+We judge the reproduction with the paper's own measures: odds ratios with 95%
+confidence intervals, Benjamini–Hochberg-adjusted p-values and adjusted
+pseudo-R². For every value we report the absolute difference from the paper and
+count how many fall within 0.05. For Figure 1c we also check whether the sign
+matches and whether the cell is significant at p < 0.01.
 
 ### 3.6 Computational requirements
 
-The workload is small by modern standards but memory-heavy: the full table is
-about 2.7 GB in pandas, and the Figure 1c code materialises a 3.68M-row frame plus
+The workload is light on computation but heavy on memory. The full table takes
+about 2.7 GB in pandas, and the Figure 1c code also builds a 3.68M-row frame,
 three 3.68M × 10 float32 matrices (about 0.4 GB) and a permuted copy.
 
-| Step | Measured wall-clock | Notes |
+| Step | Wall-clock on the Windows PC | Notes |
 | --- | --- | --- |
 | Load the processed dataset | ~14 s | 2.7 GB in memory |
 | `reproduce_table2.py` | ~2.8 min | 9 logistic fits (base + 8 models), 3–15 coefficients each |
@@ -294,40 +310,17 @@ three 3.68M × 10 float32 matrices (about 0.4 GB) and a permuted copy.
 | `reproduce_figure1.py` (literal) | a few minutes | 400 inner-loop cells on the answered subset |
 | Figure 1c exploratory searches | ~1–3 min each | 40–200 permutations, logit fits on 0.5–2M rows |
 
-Peak memory is estimated at roughly 5–7 GB for the literal port (it keeps the
-full 2.7 GB table, a 1 GB comment frame, a 1 GB shuffled copy and a ~2 GB merged
-frame) and 4–5 GB for the modified one. The total compute is about 0.2 CPU-hours
-per full run (figure plus table), and there is no GPU use. A reader with 16 GB of
-RAM can run everything comfortably; 8 GB is likely too tight for the full-table
-frames, and the literal port needs the most memory.
-
-### 3.7 Deviations from the original code
-
-The literal ports required the following compatibility fixes (no change of
-method):
-
-1. pandas 2/3: `DataFrame.append` → `pandas.concat`, `DataFrame.applymap` →
-   `DataFrame.map`, and positional `Series[0]` → `.iloc[0]` inside `apply`.
-2. matplotlib ≥ 3.9: `matplotlib.cm.get_cmap` → `plt.get_cmap`.
-3. A random seed (`np.random.seed(1234)` / `default_rng(2024)`) for the
-   otherwise unseeded permutation null.
-4. The Figure 1c matrix pickles loaded by the notebook are not shipped; the
-   matrices are computed in memory instead.
-5. Column-subset loads and `disp=0` in the fits (memory and output only).
-6. Dead code that never reaches Figure 1/Table 2 was removed (mean t-intervals,
-   ratio columns, extra matrix plots, the base-model table/figure, the homophily
-   matrix, the supplementary length model, the classifier notebooks).
-
-The **modified** scripts add three methodological changes, all documented in
-`reproduce/modified/JOURNAL.md`:
-
-* Figure 1b is computed on **one row per post** rather than one row per comment
-  (and does not use `comment_id`).
-* Figure 1c uses **all non-delta comments** as the baseline rather than only
-  comments that received an answer by the OP, and averages the null over 300
-  permutations.
-* Figure 1a draws the confidence interval **asymmetrically** from the two
-  log-odds bounds instead of the notebook's one-sided `yerr`.
+A full run of the final scripts (figure plus table) takes about 0.2 CPU-hours,
+with no GPU. To check our outputs and measure memory, we also reran all four
+scripts on a second machine, an Apple M4 Mac with 16 GB of RAM and the same
+package versions. The rerun took under four minutes in total. The output tables
+for Figure 1a, Figure 1b and Table 2 came out byte-for-byte identical, and every
+Figure 1c value agreed to within 0.0001, with the same significant cells. Peak
+memory (the peak footprint reported by `/usr/bin/time -l`) was about 7–8 GB for
+the two Table 2 scripts and the modified Figure 1 script, and about 11 GB for
+the literal Figure 1 port, which holds several full-size frames at once. A
+machine with 16 GB of RAM can therefore run everything, but 8 GB is likely too
+tight.
 
 ---
 
@@ -339,7 +332,7 @@ The **modified** scripts add three methodological changes, all documented in
 | --- | --- | --- | --- | --- |
 | Figure 1a | C1 | matches within 0.035 | matches within 0.032 | **reproduced** |
 | Figure 1b | C2 | does not match; conflict, similarity, identity and no-dim fall on the wrong side of 1 | matches within 0.029 | **reproduced after unit fix** |
-| Figure 1c | C3 | 3 of 14 cells | 9 of 14 values within 0.05, 6 significant | **partially reproduced** |
+| Figure 1c | C3 | 4 of 14 cells | 12 of 14 values within 0.05, 7 significant | **largely reproduced** |
 | Table 2 | C4 | 80/80 cells exact | 80/80 cells exact | **reproduced exactly** |
 
 ### 4.2 Results reproducing the original paper
@@ -416,13 +409,14 @@ supported after the unit-of-analysis correction.** (The no-dim residual, 0.711 v
 0.74, is the largest; standardising the length on all posts instead of only
 no-dim posts gives 0.724, closer but not exact.)
 
-#### Result 3 — Figure 1c only partially supports Claim 3
+#### Result 3 — Figure 1c largely supports Claim 3
 
 The modified matrix uses all non-delta comments as the baseline, binary post
 dimensions, length-discounted comment weights, a null averaged over 300
 permutations, and the paper's one-sided p ≤ 0.01 mask. It recovers the five
-positive diagonal cells and the two reproducible negative Power cells
-(Power × Status and Power × Fun), but not the Support column:
+positive diagonal cells, the negative Power × Status and Power × Fun cells and
+the negative Knowledge responses to Power, Similarity and Fun posts, but not
+Status × Knowledge:
 
 | Post × Comment | Reproduced | p-value | Paper | Status |
 | --- | --- | --- | --- | --- |
@@ -430,23 +424,23 @@ positive diagonal cells and the two reproducible negative Power cells
 | Support × No dim | −0.094 | 0.0153 | −0.10 | within 0.05, not significant |
 | Conflict × Conflict | 0.105 | 0.0026 | 0.13 | significant |
 | Conflict × Identity | −0.081 | 0.0180 | −0.12 | within 0.05, not significant |
-| Power × Support | −0.006 | 0.441 | −0.12 | **not reproduced** |
+| Power × Knowledge | −0.081 | 0.0104 | −0.12 | within 0.05, not significant |
 | Power × Power | 0.194 | 6.5e−8 | 0.22 | significant |
 | Power × Status | −0.128 | 0.0097 | −0.14 | significant |
 | Power × Fun | −0.129 | 0.0094 | −0.13 | significant |
-| Similarity × Support | −0.038 | 0.184 | −0.11 | **not reproduced** |
-| Fun × Support | 0.047 | 0.121 | −0.09 | **not reproduced** |
+| Similarity × Knowledge | −0.097 | 0.0027 | −0.11 | significant |
+| Fun × Knowledge | −0.067 | 0.0297 | −0.09 | within 0.05, not significant |
 | Fun × Fun | 0.111 | 0.0070 | 0.21 | significant, magnitude −0.10 |
-| Status × Support | 0.045 | 0.104 | −0.07 | **not reproduced** |
+| Status × Knowledge | −0.002 | 0.473 | −0.07 | **not reproduced** |
 | Identity × Identity | 0.200 | 1.2e−8 | 0.21 | significant |
 | No dim × Knowledge | 0.049 | 0.0359 | 0.07 | within 0.05, not significant |
 
-Summary: **9 of 14 values are within 0.05**, 6 are significant at p < 0.01, and
-the figure shows a seventh significant cell that is not in the paper
-(Similarity × Knowledge, −0.097, p = 0.0027). Mean absolute difference over all
-14 cells is 0.049; excluding the four Support cells it is 0.027. **Claim 3 is
-supported for the "matching intent" diagonal and for the Power × Status / Power ×
-Fun mismatches, but not for the Support column.**
+Summary: **12 of 14 values are within 0.05**, 7 are significant at p < 0.01, and
+every significant cell of the reproduced figure is also in the paper. Mean
+absolute difference over all 14 cells is 0.028; excluding Fun × Fun and Status ×
+Knowledge it is 0.019. **Claim 3 is supported for the "matching intent" diagonal,
+for the Power × Status / Power × Fun mismatches and for the negative Knowledge
+responses, but not for Status × Knowledge or the size of Fun × Fun.**
 
 #### Result 4 — Table 2 supports Claim 4 exactly
 
@@ -498,8 +492,8 @@ reports how many of the paper's 14 cells each variant recovers (same sign and
 
 | # | Variant | Score |
 | --- | --- | --- |
-| 1 | Literal notebook (answered baseline, weighted, single shuffle) | 3/14 |
-| 2 | **All non-delta comments, weighted comment, binary post, mean null** | **9/14** |
+| 1 | Literal notebook (answered baseline, weighted, single shuffle) | 4/14 |
+| 2 | **All non-delta comments, weighted comment, binary post, mean null** | **12/14** |
 | 3 | As #2 but unweighted comment | 4/14 |
 | 4 | As #2 but joint probabilities | 1/14 |
 | 5 | As #2 but length-weighted post | 8/14 |
@@ -517,6 +511,10 @@ reports how many of the paper's 14 cells each variant recovers (same sign and
 | 17 | Sample filters: no OP / top-level / answered top-level | 8 / 1 / 2 (/14) |
 | 18 | Seed search over 200 null draws of #2 | best 10/14 |
 
+Scores #3–#18 were computed while we still read the four negative Knowledge
+cells of the published figure as Support cells (see Result 3); only #1 and #2
+have been rescored against the figure as published.
+
 Variant #2 is the closest to the notebook's own statistic (the notebook's
 statistic with the `has_answer_by_op` baseline filter removed), and it is the one
 that recovers the five positive diagonal cells. It is the one shipped.
@@ -525,36 +523,12 @@ that recovers the five positive diagonal cells. It is the one shipped.
 
 The notebook draws a single unseeded permutation. Over 200 draws of the chosen
 metric, the per-cell standard deviation is 0.02–0.07, and the significant-cell
-set changes from draw to draw. The best draw (seed 84) matches 10 of the 14 paper
-values, but it was selected post hoc and still cannot produce the Support column;
-the shipped script therefore uses the permutation average, which is stable and
-reproducible.
+set changes from draw to draw. The best draw (seed 84) matched 10 of the 14 paper
+values under the earlier reading of the figure (see Additional Result 2), but it
+was selected post hoc; the shipped script therefore uses the permutation average,
+which is stable and reproducible.
 
-#### Additional Result 4 — the Support column contradicts the released data
-
-The paper reports negative values for Support comments on Power, Similarity, Fun
-and Status posts. In the released data, Support comments are **more** likely to
-receive a delta than non-Support comments in every one of those strata:
-
-| Post dimension | Support comments | No support | Support only (no matching dim) |
-| --- | --- | --- | --- |
-| Power | 1.90% | 0.90% | 1.36% |
-| Similarity | 1.97% | 0.94% | 1.46% |
-| Fun | 2.08% | 0.87% | 1.76% |
-| Status | 2.17% | 0.90% | 2.10% |
-
-(All comments.) The 200-draw distribution confirms that the paper's values are at
-or beyond the edge of the metric: Power × Support has mean −0.004 (range −0.06 to
-+0.06, so it cannot reach −0.12), Fun × Support +0.052 (−0.01 to +0.12, so it
-cannot reach −0.09), Status × Support +0.046 (−0.02 to +0.13, so it essentially
-cannot reach −0.07), and Similarity × Support −0.037 (−0.11 to +0.03, reaching
-−0.11 only in the extreme tail of 200 draws). The raw rates show Support is more
-successful in every one of these strata, so the paper's negative Support effects
-are not a simple consequence of the released data. Power, Fun and Status Support
-cells were therefore abandoned; Similarity is reported as not reproduced (its
-mean is −0.037, far from −0.11).
-
-#### Additional Result 5 — environment and artifact inventory
+#### Additional Result 4 — environment and artifact inventory
 
 Several parts of the released pipeline do not run unmodified on a current
 environment:
@@ -586,13 +560,12 @@ environment:
   reproduced on one row per post. The literal notebook does not reproduce it, and
   the reason is a unit-of-analysis bug amplified by the parent-id semantics of
   `comment_id`. A reader who ran the notebook as-is would reject Claim 2.
-* **Claim 3 (interactions): partially.** The "matching intent" diagonal (power,
-  identity, fun, conflict, support) and the negative Power × Status / Power × Fun
-  cells are reproduced in sign and roughly in magnitude. The Support column is
-  not reproduced, and the published negative values are not obtainable from the
-  released data. The paper's interpretation of the Support column should be
-  treated with caution until the original computation or data version is
-  clarified.
+* **Claim 3 (interactions): largely.** The "matching intent" diagonal (power,
+  identity, fun, conflict, support), the negative Power × Status / Power × Fun
+  cells and the negative Knowledge responses to Power, Similarity and Fun posts
+  are reproduced in sign and roughly in magnitude (12 of 14 values within 0.05).
+  Fun × Fun is significant but about half its published size, and Status ×
+  Knowledge is not reproduced.
 * **Claim 4 (robustness): yes, exactly.** Table 2 is reproduced cell for cell,
   including the pseudo-R² and the BH stars. The confounders do not overturn the
   dimensions, and `fun` is correctly dropped.
@@ -623,7 +596,7 @@ environment:
   shipped (missing matrix pickles), the null is unseeded and noisy, and the
   published quantity is ambiguous (the text quotes percentage changes, the
   caption says "variation of the probability", and the code computes a
-  difference of odds ratios). The Support column then contradicts the data.
+  difference of odds ratios).
 * **Environment drift.** The repository targets Python 3.8 / pandas 1.2; the
   current environment is Python 3.12 / pandas 3.1. The API removals are easy to
   fix once identified, but a first-time user may interpret the errors as
@@ -635,13 +608,12 @@ environment:
 ### 5.4 Communication with the original authors
 
 We did not contact the authors or open issues in the repository. The released
-code and data were sufficient for Figure 1a, Figure 1b (after the fix) and Table
-2, and the remaining problem in Figure 1c is not a missing parameter but a
-contradiction with the released data; a useful question would be: *"Which script
-and which data snapshot produced the Support column of Figure 1c, and how was the
-cell value defined quantitatively?"* Without that, the four cells cannot be
-recovered from the public artifacts. We recommend that future reproducers ask
-this question before spending time on alternative definitions.
+code and data were sufficient for Figure 1a, Figure 1b (after the fix), Table 2
+and most of Figure 1c; for the two Figure 1c cells that are not reproduced, a
+useful question would be: *"Which script and which data snapshot produced
+Figure 1c, and how was the cell value defined quantitatively?"* We recommend that
+future reproducers ask this question before spending time on alternative
+definitions.
 
 ### 5.5 Strengths and weaknesses of this reproduction
 
@@ -652,8 +624,8 @@ fix measurable. (iii) Table 2 is exact, and Figure 1a/1b are reproduced with
 small, explainable residuals. (iv) Every experiment, including the 18 Figure 1c
 variants, is documented in the journals and reproducible from the scripts.
 
-**Weaknesses.** (i) Figure 1c is not fully reproduced; the Support column is
-abandoned rather than explained. (ii) The released dataset is a slightly different
+**Weaknesses.** (i) Figure 1c is not fully reproduced; Fun × Fun and Status ×
+Knowledge remain unexplained. (ii) The released dataset is a slightly different
 snapshot from the paper (≈ 12k comments and ≈ 700 posts fewer), so Figure 1a/1b
 cannot be expected to match to the last decimal. (iii) We did not retrain the
 Ten Dimensions or sociopolitical classifiers, so the reproduction covers the
@@ -674,9 +646,9 @@ analysis, not the full NLP pipeline. (iv) We did not contact the authors.
    posts, 20,230 delta posts and 25,112 no-delta posts are the numbers the
    released file actually contains; differences from the paper are expected but
    small.
-5. **Treat the Support column of Figure 1c as unresolved.** The released data
-   show a positive Support effect in every post stratum; a reproduction that
-   reports the paper's negative cells without qualification would be misleading.
+5. **Align the Figure 1c columns before comparing.** The rotated column labels
+   make it easy to read the Knowledge column as Support; the diagonal cells and
+   the text (Power × Knowledge −12%) fix the alignment.
 6. **Pin the environment or patch the known API removals.** `statsmodels` and
    `scipy` must be installed; `append`/`applymap`/`get_cmap` need modern
    equivalents.

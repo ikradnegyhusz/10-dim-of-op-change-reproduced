@@ -14,6 +14,13 @@ Headline:
 | Figure 1c | 9/14 cells within 0.05; 6 of the paper's cells significant at p<0.01; four "Support" cells **not reproducible** | 14 cells |
 | Table 2 | **80/80 non-empty cells exact** | — |
 
+**Correction.**  The four negative cells this journal reads as Support (Power,
+Similarity, Fun and Status rows) are in the Knowledge column of the published
+figure.  Against the figure as published, the shipped matrix has 12/14 values
+within 0.05 and all 7 of its significant cells are in the paper (see the report,
+Result 3, and `output/figure1c_vs_paper.csv`); section 3 below keeps the earlier
+reading.
+
 ## 1. Figure 1a — comments
 
 Backbone code kept, one change: the 95% interval is drawn asymmetrically from

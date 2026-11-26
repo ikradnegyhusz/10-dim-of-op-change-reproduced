@@ -70,10 +70,10 @@ DISPLAY["nodimensions"] = "No dim"
 PAPER_C = {
     ("support", "support"): 0.10, ("support", "nodimensions"): -0.10,
     ("conflict", "conflict"): 0.13, ("conflict", "identity"): -0.12,
-    ("power", "support"): -0.12, ("power", "power"): 0.22,
+    ("power", "knowledge"): -0.12, ("power", "power"): 0.22,
     ("power", "status"): -0.14, ("power", "fun"): -0.13,
-    ("similarity", "support"): -0.11, ("fun", "support"): -0.09,
-    ("fun", "fun"): 0.21, ("status", "support"): -0.07,
+    ("similarity", "knowledge"): -0.11, ("fun", "knowledge"): -0.09,
+    ("fun", "fun"): 0.21, ("status", "knowledge"): -0.07,
     ("identity", "identity"): 0.21, ("nodimensions", "knowledge"): 0.07,
 }
 

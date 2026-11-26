@@ -75,6 +75,11 @@ different snapshot, which explains second/third-decimal differences in Figure
 | Figure 1c | **not reproduced**: 8 significant cells, 3 overlap the paper; unseeded null model | 14 cells, mostly positive diagonal |
 | Table 2 | **exact**: 80/80 non-empty cells, including R² and stars | — |
 
+**Correction.**  The paper's negative cells in the Power, Similarity, Fun and
+Status rows are in the Knowledge column, not Support.  With that reading the
+literal code overlaps 4 of the paper's 14 cells, including Power x Knowledge
+(-0.120 vs -0.12); the Figure 1c section below keeps the earlier reading.
+
 ## Figure 1a — comments
 
 Cell 5 frame, `nodimensions` from the nine binary columns, length discount on
