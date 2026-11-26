@@ -1,39 +1,3 @@
-#!/usr/bin/env python3
-"""Modified reproduction of Figure 1 of Monti et al. (2022), Sci. Rep. 12:17920.
-
-Backbone: ``reproduce/from_original/reproduce_figure1.py`` (itself a literal port
-of ``original_repo/notebook/3_odds-ratios.ipynb``).  The modifications are:
-
-Panel (a) - comments
-    Same estimator as the notebook (mean length-discounted score as p, Eq. 9
-    count-based CI).  The 95% interval is now drawn asymmetrically (lower and
-    upper log-odds bounds) instead of the notebook's ``yerr = CI_upper - OR``.
-
-Panel (b) - posts
-    The notebook kept one row per comment (and ``comment_id`` is actually the
-    parent id in the released data, so sibling comments collapsed too).  The
-    panel is now computed on **one row per post**: a post is a delta post if at
-    least one of its comments received a delta, and each post contributes once.
-
-Panel (c) - post x comment matrix
-    The notebook restricted the no-delta baseline to comments that received an
-    answer by the OP and used a single unseeded random permutation as the null.
-    The modified version uses **all non-delta comments** as the baseline (which
-    is what the paper describes: "probability of achieving a delta"), averages
-    the null over several post permutations, and keeps the notebook's statistic
-    (conditional OR of delta vs no-delta, difference of the two) and its
-    one-sided p < 0.01 mask.  This reproduces 9 of the paper's 14 values (6 of
-    them significant at p<0.01) and the five positive diagonal cells; the four
-    negative "Support" cells cannot be reproduced from the released data (see
-    ``JOURNAL.md``).
-
-Table 2 is untouched: it is already exact (``reproduce_table2.py``).
-
-Usage (from the repository root)::
-
-    env/Scripts/python.exe reproduce/modified/reproduce_figure1.py
-"""
-
 from __future__ import annotations
 
 import time
@@ -65,8 +29,6 @@ DIMENSIONS_EXTENDED = DIMENSION_COLUMNS + ["nodimensions"]
 DISPLAY = {d: d.capitalize() for d in DIMENSION_COLUMNS}
 DISPLAY["nodimensions"] = "No dim"
 
-# Published Figure 1c, read off the paper (post row, comment column), used only
-# for the comparison CSV/printout.
 PAPER_C = {
     ("support", "support"): 0.10, ("support", "nodimensions"): -0.10,
     ("conflict", "conflict"): 0.13, ("conflict", "identity"): -0.12,
@@ -78,7 +40,7 @@ PAPER_C = {
 }
 
 
-# --------------------------------------------------------------------------- helpers
+#  helpers
 def standardize_length(x: float, mu: float, std: float) -> float:
     """Length-discounting factor of paper Eq. 2."""
     z = (x - mu) / std
@@ -110,7 +72,7 @@ def load_dataset() -> pd.DataFrame:
     return data
 
 
-# --------------------------------------------------------------------------- panel a
+#  panel a
 def panel_a(data: pd.DataFrame) -> pd.DataFrame:
     comment_columns = (
         ["is_op", "has_delta", "log_number_of_words"]
@@ -154,7 +116,7 @@ def panel_a(data: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows).sort_values("odds_ratio", ascending=False).reset_index(drop=True)
 
 
-# --------------------------------------------------------------------------- panel b
+#  panel b
 def panel_b(data: pd.DataFrame) -> pd.DataFrame:
     post_columns = (
         ["post_id", "log_number_of_words_post"]
@@ -196,7 +158,7 @@ def panel_b(data: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows).sort_values("odds_ratio", ascending=False).reset_index(drop=True)
 
 
-# --------------------------------------------------------------------------- panel c
+#  panel c
 def _binary_matrices(frame: pd.DataFrame):
     post = frame[[f"{d}_post" for d in DIMENSION_COLUMNS]].gt(0).to_numpy(np.float32)
     post_nodim = (~post.astype(bool).any(axis=1)).astype(np.float32)
@@ -281,7 +243,7 @@ def panel_c(data: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFram
     return frame_of(difference), frame_of(pvalue), frame_of(shown)
 
 
-# --------------------------------------------------------------------------- plotting
+#  plotting
 def plot_odds_ratio(ax, table: pd.DataFrame, title: str, xlim: tuple[float, float]):
     ordered = table.sort_values("odds_ratio", ascending=False).reset_index(drop=True)
     y = np.arange(len(ordered))
@@ -338,7 +300,7 @@ def plot_figure(a, b, values, pvalues, path):
     plt.close(fig)
 
 
-# --------------------------------------------------------------------------- main
+#  main
 def main():
     data = load_dataset()
 

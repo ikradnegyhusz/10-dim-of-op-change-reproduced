@@ -1,30 +1,3 @@
-#!/usr/bin/env python3
-"""Reproduce Figure 1 of Monti et al. (2022), Sci. Rep. 12:17920.
-
-Port of ``original_repo/notebook/3_odds-ratios.ipynb``.  The notebook cells are
-quoted in the comments; the code follows them as closely as possible, including
-their known quirks (see ``JOURNAL.md``).  Only compatibility fixes and dead code
-removal were applied:
-
-* a random seed is set before the null-model permutation (the notebook has none;
-  without a seed the figure is not reproducible at all);
-* the ``_weighted-comment_discounted`` matrix pickles loaded by the notebook's
-  cell 27 are not shipped in the repository; the matrices computed by cell 26
-  are used directly instead;
-* ``matplotlib.cm.get_cmap`` (removed in matplotlib >= 3.9) is replaced by
-  ``plt.get_cmap``;
-* the full ``D.copy()`` of cell 16 is replaced by a column subset (memory only);
-* diagnostic prints and quantities that never reach the figure (t-intervals of
-  the means, ratio columns, the joint-probability matrix plot, etc.) are dropped;
-* the notebook also computes the two sentiment scores in panels (a) and (b);
-  they are kept in the CSV outputs but not drawn, because the published figure
-  only shows the nine dimensions plus "No dim".
-
-Usage (from the repository root)::
-
-    env/Scripts/python.exe reproduce/from_original/reproduce_figure1.py
-"""
-
 from __future__ import annotations
 
 import time
@@ -47,7 +20,7 @@ OUT_DIR = HERE / "output"
 SEED = 1234
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
-# --------------------------------------------------------------------------- cell 1
+#   cell 1
 dimensions_names = [
     "support", "knowledge", "conflict", "power", "similarity",
     "fun", "status", "trust", "identity", "romance",
@@ -69,13 +42,13 @@ def standardized_dimension_score(x, mu, std):
         return 2 - (1 / (1 + zscore))
 
 
-# --------------------------------------------------------------------------- load
+#   load
 t = time.time()
 D = pd.read_pickle(DATA_PATH)
 print(f"[data] {DATA_PATH.name}: {D.shape[0]:,} rows in {time.time() - t:.1f}s",
       flush=True)
 
-# --------------------------------------------------------------------------- cell 5
+#   cell 5
 df_comments = D[[
     "post_id", "comment_id", "vader_sentiment_comment", "number_of_words",
     "score_comment", "is_op", "has_delta", "has_answer_by_op",
@@ -100,7 +73,7 @@ df_comments.columns = [
     "sentiment_pos_weighted", "sentiment_neg_weighted",
 ]
 
-# --------------------------------------------------------------------------- cell 13
+#   cell 13
 df_posts = D[[
     "post_id", "vader_sentiment_post", "score_post", "number_of_words_post",
     "log_number_of_words_post", "support_post", "knowledge_post", "conflict_post",
@@ -123,7 +96,7 @@ df_posts.columns = [
 ]
 df_posts = df_posts.drop_duplicates(subset=["post_id"])
 
-# --------------------------------------------------------------------------- cell 16
+#   cell 16
 # The notebook does ``df_paired = D.copy()`` and then filters.  D has 88 columns
 # and copying it costs ~2.7 GB, so only the columns used downstream are kept.
 paired_columns = (
@@ -139,7 +112,7 @@ df_paired = df_paired[
 ]
 del D
 
-# --------------------------------------------------------------------------- cell 8
+#   cell 8
 df_comments["nodimensions"] = df_comments[
     [f"{d}" for d in dimensions_names_redux]
 ].sum(axis=1)
@@ -152,7 +125,7 @@ df_comments["nodimensions_weighted"] = df_comments["log_number_of_words"].apply(
     lambda x: standardized_dimension_score(x, avg, stdev)
 ) * df_comments["nodimensions"]
 
-# --------------------------------------------------------------------------- cell 9
+#   cell 9
 df_no_delta = df_comments[df_comments["has_delta"] == False].dropna()
 df_delta = df_comments[df_comments["has_delta"] == True].dropna()
 df_delta = df_delta[df_delta["is_op"] == False]
@@ -161,7 +134,7 @@ print(f"[figure 1a] comments with delta: {len(df_delta):,}; "
       f"without: {len(df_no_delta):,}", flush=True)
 
 
-# --------------------------------------------------------------------------- cell 10 / 23
+#   cell 10 / 23
 def odds_ratio_and_ci(scores_delta, scores_no_delta):
     """Odds ratio and the upper error bar used by the notebook."""
     avg_delta = float(scores_delta.mean())
@@ -205,7 +178,7 @@ print("[figure 1a] all computed dimensions (the notebook's loop):", flush=True)
 print(panel_a[["dimension", "odds_ratio", "ci_log_lower", "ci_log_upper"]]
       .to_string(index=False, float_format=lambda x: f"{x:.4f}"), flush=True)
 
-# --------------------------------------------------------------------------- cell 14
+#   cell 14
 df_comments_shuffled = df_comments.copy(deep=True)
 np.random.seed(SEED)  # not in the notebook; needed to make the null model reproducible
 df_comments_shuffled["post_id"] = np.random.permutation(
@@ -217,13 +190,13 @@ df_paired_shuffled = pd.merge(
     suffixes=("_comment", "_post"))
 del df_comments_shuffled
 
-# --------------------------------------------------------------------------- cell 16
+#   cell 16
 df_paired_shuffled = df_paired_shuffled[
     (df_paired_shuffled["has_delta"] == True)
     | (df_paired_shuffled["has_answer_by_op"] == True)
 ]
 
-# --------------------------------------------------------------------------- cell 18
+#   cell 18
 for t_ in ["post", "comment"]:
     df_paired[f"nodimensions_{t_}"] = sum(
         [df_paired[f"{d}_{t_}"] for d in dimensions_names_redux])
@@ -256,7 +229,7 @@ for t_ in ["post", "comment"]:
     df_paired_shuffled[f"nodimensions_weighted_{t_}"] = df_paired_shuffled[
         f"nodimensions_{t_}"]
 
-# --------------------------------------------------------------------------- cell 20
+#   cell 20
 field_selection = ["post_id", "comment_id", "has_delta", "has_answer_by_op"]
 field_selection += [d + "_post" for d in dimensions_names]
 field_selection += [d + "_weighted_post" for d in dimensions_names]
@@ -272,12 +245,12 @@ field_selection += [
 df_posts_delta_nondelta = df_paired[field_selection].drop_duplicates(
     subset=["post_id", "comment_id", "has_delta"])
 
-# --------------------------------------------------------------------------- cell 21
+#   cell 21
 df_posts_delta = df_posts_delta_nondelta[
     df_posts_delta_nondelta["has_delta"] == True
 ].drop_duplicates().dropna()
 
-# --------------------------------------------------------------------------- cell 22
+#   cell 22
 df_posts_nodelta = df_posts_delta_nondelta[
     ~df_posts_delta_nondelta["post_id"].isin(df_posts_delta["post_id"])
 ].drop_duplicates().dropna()
@@ -286,7 +259,7 @@ print(f"[figure 1b, notebook's literal unit] rows with delta: {len(df_posts_delt
       f"{len(df_posts_nodelta):,} ({df_posts_nodelta['post_id'].nunique():,} posts)",
       flush=True)
 
-# --------------------------------------------------------------------------- cell 23
+#   cell 23
 panel_b_rows = []
 all_dims_b = dimensions_names_redux + ["sentiment_pos", "sentiment_neg", "nodimensions"]
 for dim in all_dims_b:
@@ -301,7 +274,7 @@ print("[figure 1b] all computed dimensions (the notebook's loop):", flush=True)
 print(panel_b[["dimension", "odds_ratio", "ci_log_lower", "ci_log_upper"]]
       .to_string(index=False, float_format=lambda x: f"{x:.4f}"), flush=True)
 
-# --------------------------------------------------------------------------- cell 26
+#   cell 26
 dimensions_names_extended = dimensions_names_redux + ["nodimensions"]
 has_answer_filter = False
 
@@ -367,7 +340,7 @@ for is_delta in [True, False]:
             matrix_discounted[i][j] = (or_joint, or_cond, stderr_log_joint_pval)
     matrices_discounted[is_delta] = matrix_discounted
 
-# --------------------------------------------------------------------------- cell 27
+#   cell 27
 p_type = "cond"  # 'cond' as in the notebook
 
 M = {True: None, False: None}
@@ -416,7 +389,7 @@ n_significant = int(np.sum(np.array(pval_matrix) <= 0.01))
 print(f"[figure 1c] {n_significant} cells with p<=0.01", flush=True)
 print(values.round(3).to_string(), flush=True)
 
-# --------------------------------------------------------------------------- figure
+#   figure
 def plot_odds_ratio_panel(ax, panel, title, dims):
     panel = panel[panel["dimension"].isin(dims)].sort_values(
         "odds_ratio", ascending=False).reset_index(drop=True)

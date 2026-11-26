@@ -1,29 +1,3 @@
-#!/usr/bin/env python3
-"""Modified reproduction of Table 2 of Monti et al. (2022), Sci. Rep. 12:17920.
-
-Table 2 was already reproduced exactly by the literal port of
-``original_repo/notebook/2_logistic-regression.ipynb``; no methodological change
-is needed here.  The script is copied from ``from_original`` and keeps the same
-compatibility fixes:
-
-* ``DataFrame.append`` (removed in pandas 2) is replaced by ``pandas.concat``
-  in ``add_results_to_table``;
-* ``Series.__getitem__`` with positional indices inside ``apply`` is replaced
-  by ``.iloc`` (pandas 3 no longer allows positional lookups on labelled
-  Series);
-* ``DataFrame.applymap`` (removed in pandas 3) is replaced by ``DataFrame.map``;
-* only the 19 columns used by the models are loaded (the notebook loads all 88
-  columns of the processed dataset, which costs ~2.7 GB);
-* ``disp=0`` is passed to the fits to keep the output readable;
-* notebook parts that do not produce Table 2 were removed (the second base
-  model with sentiment, the base-model LaTeX table and figure, the homophily
-  matrix, and the supplementary length-controlled table).
-
-Usage (from the repository root)::
-
-    env/Scripts/python.exe reproduce/modified/reproduce_table2.py
-"""
-
 from __future__ import annotations
 
 import re
@@ -57,7 +31,7 @@ CONFOUNDER_COLUMNS = [
 ]
 
 
-# --------------------------------------------------------------------------- cell 4
+#  cell 4
 nice_columns = lambda c: (c
             .replace('_z', '')
             .replace('_weighted_comment', '')
@@ -104,7 +78,7 @@ def add_results_to_table(res, df=None, method='fdr_bh'):
         return pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
 
 
-# --------------------------------------------------------------------------- cells 2-3
+#  cells 2-3
 t = time.time()
 df = pd.read_pickle(DATA_PATH)[
     ['has_delta'] + CONFOUNDER_COLUMNS + Z_COLUMNS
@@ -113,21 +87,21 @@ df.has_delta = df.has_delta.astype(np.int64)
 print(f"[data] {df.shape[0]:,} rows loaded in {time.time() - t:.1f}s "
       f"({df['has_delta'].mean() * 100:.2f}% with delta)", flush=True)
 
-# --------------------------------------------------------------------------- cell 6
+#  cell 6
 ALL_DIMS = [c.replace('_weighted_comment_z', '') for c in df.columns
             if 'weighted_comment_z' in c]
 
-# --------------------------------------------------------------------------- cell 7
+#  cell 7
 np.random.seed(1234)
 
-# --------------------------------------------------------------------------- cell 8
+#  cell 8
 base_model_results = smf.logit(formula="has_delta ~ " + ' + '.join(
     [c + '_weighted_comment_z' for c in ALL_DIMS[:-2]]
 ), data=df).fit(disp=0)
 print(f"[dims] base model fitted (converged: "
       f"{base_model_results.mle_retvals['converged']})", flush=True)
 
-# --------------------------------------------------------------------------- cell 14
+#  cell 14
 DIMS = list(np.array(list(base_model_results.pvalues.index))[
     statsmodels.stats.multitest.multipletests(
         base_model_results.pvalues,
@@ -140,7 +114,7 @@ DIMS = [d.replace('_weighted_comment_z', '') for d in DIMS]
 print(f"[dims] kept at 0.01 (fdr_by): {', '.join(DIMS)}", flush=True)
 
 
-# --------------------------------------------------------------------------- cell 23
+#  cell 23
 def run_log_reg(common_factors=''):
     np.random.seed(1234)
     homophily_results_df = None
@@ -170,7 +144,7 @@ def run_log_reg(common_factors=''):
 
 homophily_results_df = run_log_reg()
 
-# --------------------------------------------------------------------------- cell 24
+#  cell 24
 homophily_results_table = homophily_results_df.sort_values(
     by='Adj. Pseudo-$R^2$').copy()
 homophily_results_table.columns = [
@@ -180,7 +154,7 @@ homophily_results_table = homophily_results_table.transpose()
 homophily_results_table.columns = list(
     "ABCDEFGHIJKLMNOPQRSTUVWXYZ"[:len(homophily_results_table.columns)])
 
-# --------------------------------------------------------------------------- cell 25
+#  cell 25
 homophily_results_table = homophily_results_table.reindex([
     'Adj. Pseudo-$R^2$', 'Intercept',
     'Support', 'Knowledge', 'Conflict', 'Power', 'Similarity', 'Status',
@@ -195,7 +169,7 @@ homophily_results_table.to_csv(OUT_DIR / "table2_reproduced.csv")
 print("\n=== Reproduced Table 2 ===", flush=True)
 print(homophily_results_table.to_string(), flush=True)
 
-# --------------------------------------------------------------------------- cell 26
+#  cell 26
 # applymap -> map: DataFrame.applymap was removed in pandas 3.
 latex_table = (homophily_results_table
                .map(lambda x: x if x != '' else r'\dotfill')
